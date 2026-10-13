@@ -1,0 +1,8 @@
+{
+  "name": "jrrvs | Minimal Gen-Z & College Streetwear",
+  "description": "Minimal heavyweight streetwear essentials engineered for college students and Gen-Z. Boxy tees, oversized hoodies, parachute cargos, and campus uniforms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

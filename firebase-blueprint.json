@@ -1,0 +1,146 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered customer profile for JRRVS college streetwear store",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique Firebase Authentication UID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Student email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Student full name"
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Mobile contact number"
+        },
+        "university": {
+          "type": "string",
+          "description": "College or university campus"
+        },
+        "hostelAddress": {
+          "type": "string",
+          "description": "Hostel room or residence address"
+        },
+        "city": {
+          "type": "string",
+          "description": "Campus delivery city"
+        },
+        "pincode": {
+          "type": "string",
+          "description": "Postal PIN code"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of account registration"
+        }
+      },
+      "required": ["id", "email"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Garment booking and dispatch order record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique order document identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the student who placed the order"
+        },
+        "orderNumber": {
+          "type": "string",
+          "description": "Human-readable order tracking ID like JRRVS-IN-XXXXXX"
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total order amount in INR"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["upi", "card", "cod"],
+          "description": "Selected payment method"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["Paid", "Pay on Delivery"],
+          "description": "Payment verification status"
+        },
+        "upiRefId": {
+          "type": "string",
+          "description": "UPI bank reference or transaction ID if paid via UPI"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Confirmed", "Dispatched", "Out for Delivery", "Delivered"],
+          "description": "Live campus delivery lifecycle stage"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Formatted timestamp of order creation"
+        },
+        "estimatedDeliveryDate": {
+          "type": "string",
+          "description": "Estimated hostel arrival window"
+        }
+      },
+      "required": ["id", "orderNumber", "totalAmount", "paymentMethod", "status"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Product stock level and availability in the warehouse",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Unique product ID"
+        },
+        "stockCount": {
+          "type": "number",
+          "description": "Remaining stock units"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "Timestamp of stock update"
+        }
+      },
+      "required": ["productId", "stockCount"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Stores student user profile and saved delivery defaults"
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Stores user's garment orders and dispatch tracking records"
+    },
+    "/all_orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Stores master ledger of all campus orders for admin management"
+    },
+    "/inventory/{productId}": {
+      "schema": {
+        "$ref": "#/entities/InventoryItem"
+      },
+      "description": "Stores stock levels for garments"
+    }
+  }
+}
