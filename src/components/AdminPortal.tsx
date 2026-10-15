@@ -55,7 +55,91 @@ interface AdminPortalProps {
   onOrderStatusUpdated?: (orderId: string, newStatus: OrderStatus) => void;
 }
 
-export const AdminPortal: React.FC<AdminPortalProps> = ({
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class AdminPortalErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('AdminPortal caught error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+      localStorage.removeItem('jrrvs_master_orders');
+    } catch {
+      // ignore
+    }
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md font-mono">
+          <div className="w-full max-w-lg bg-[#141518] border border-red-500/40 rounded-xl p-6 sm:p-8 text-white shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/30">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-heading font-black text-lg uppercase tracking-tight text-white">
+                  Admin HQ System Recovery
+                </h3>
+                <p className="text-xs text-red-400">Terminal recovered from data anomaly</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              A malformed record was prevented from crashing the terminal. You can reset the local admin cache to restore sample student campus orders or return to the storefront.
+            </p>
+
+            {this.state.error && (
+              <pre className="p-3 bg-black/60 border border-zinc-800 rounded text-[11px] text-zinc-400 overflow-x-auto max-h-32">
+                {this.state.error.message || String(this.state.error)}
+              </pre>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={this.handleReset}
+                className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reset Cache & Reload</span>
+              </button>
+              <button
+                onClick={this.props.onClose}
+                className="py-2 px-4 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-lg text-xs transition-colors"
+              >
+                Return to Store
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const AdminPortalInner: React.FC<AdminPortalProps> = ({
   isOpen,
   onClose,
   products,
@@ -231,23 +315,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
-  // Filtered Orders
+  // Filtered Orders (100% defensive against missing or corrupted fields)
   const filteredOrders = useMemo(() => {
+    if (!Array.isArray(orders)) return [];
     return orders.filter((order) => {
+      if (!order) return false;
+      const orderNum = String(order.orderNumber || order.id || '');
+      const addr = order.deliveryAddress || {};
+      const fullName = String(addr.fullName || '');
+      const email = String(addr.email || '');
+      const phone = String(addr.phone || '');
+      const university = String(addr.university || '');
+      const city = String(addr.city || '');
+      const q = (searchOrderQuery || '').toLowerCase().trim();
+
       const matchSearch =
-        searchOrderQuery.trim() === '' ||
-        order.orderNumber.toLowerCase().includes(searchOrderQuery.toLowerCase()) ||
-        order.deliveryAddress.fullName.toLowerCase().includes(searchOrderQuery.toLowerCase()) ||
-        order.deliveryAddress.email.toLowerCase().includes(searchOrderQuery.toLowerCase()) ||
-        order.deliveryAddress.phone.toLowerCase().includes(searchOrderQuery.toLowerCase()) ||
-        order.deliveryAddress.university.toLowerCase().includes(searchOrderQuery.toLowerCase()) ||
-        order.deliveryAddress.city.toLowerCase().includes(searchOrderQuery.toLowerCase());
+        q === '' ||
+        orderNum.toLowerCase().includes(q) ||
+        fullName.toLowerCase().includes(q) ||
+        email.toLowerCase().includes(q) ||
+        phone.toLowerCase().includes(q) ||
+        university.toLowerCase().includes(q) ||
+        city.toLowerCase().includes(q);
 
+      const status = String(order.status || '').toLowerCase();
       const matchStatus =
-        selectedStatusFilter === 'all' || order.status.toLowerCase() === selectedStatusFilter.toLowerCase();
+        selectedStatusFilter === 'all' || status === selectedStatusFilter.toLowerCase();
 
+      const payment = String(order.paymentMethod || '').toLowerCase();
       const matchPayment =
-        selectedPaymentFilter === 'all' || order.paymentMethod.toLowerCase() === selectedPaymentFilter.toLowerCase();
+        selectedPaymentFilter === 'all' || payment === selectedPaymentFilter.toLowerCase();
 
       return matchSearch && matchStatus && matchPayment;
     });
@@ -255,33 +352,50 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Analytics Metrics
   const totalRevenue = useMemo(() => {
-    return orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    if (!Array.isArray(orders)) return 0;
+    return orders.reduce((sum, o) => {
+      const val = Number(o?.totalAmount);
+      return sum + (isNaN(val) ? 0 : val);
+    }, 0);
   }, [orders]);
 
   const ordersByStatus = useMemo(() => {
+    if (!Array.isArray(orders)) {
+      return { confirmed: 0, dispatched: 0, outForDelivery: 0, delivered: 0 };
+    }
     return {
-      confirmed: orders.filter((o) => o.status === 'Confirmed').length,
-      dispatched: orders.filter((o) => o.status === 'Dispatched').length,
-      outForDelivery: orders.filter((o) => o.status === 'Out for Delivery').length,
-      delivered: orders.filter((o) => o.status === 'Delivered').length,
+      confirmed: orders.filter((o) => o?.status === 'Confirmed').length,
+      dispatched: orders.filter((o) => o?.status === 'Dispatched').length,
+      outForDelivery: orders.filter((o) => o?.status === 'Out for Delivery').length,
+      delivered: orders.filter((o) => o?.status === 'Delivered').length,
     };
   }, [orders]);
 
   const paymentBreakdown = useMemo(() => {
-    const upi = orders.filter((o) => o.paymentMethod === 'upi').length;
-    const card = orders.filter((o) => o.paymentMethod === 'card').length;
-    const cod = orders.filter((o) => o.paymentMethod === 'cod').length;
+    if (!Array.isArray(orders)) {
+      return { upi: 0, card: 0, cod: 0 };
+    }
+    const upi = orders.filter((o) => String(o?.paymentMethod || '').toLowerCase() === 'upi').length;
+    const card = orders.filter((o) => String(o?.paymentMethod || '').toLowerCase() === 'card').length;
+    const cod = orders.filter((o) => String(o?.paymentMethod || '').toLowerCase() === 'cod').length;
     return { upi, card, cod };
   }, [orders]);
 
   // Filtered Products for Inventory
   const filteredProducts = useMemo(() => {
+    if (!Array.isArray(products)) return [];
     return products.filter((p) => {
+      if (!p) return false;
+      const q = (searchProductQuery || '').toLowerCase().trim();
+      const name = String(p.name || '');
+      const id = String(p.id || '');
+      const cat = String(p.category || '');
+
       const matchQuery =
-        searchProductQuery.trim() === '' ||
-        p.name.toLowerCase().includes(searchProductQuery.toLowerCase()) ||
-        p.id.toLowerCase().includes(searchProductQuery.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchProductQuery.toLowerCase());
+        q === '' ||
+        name.toLowerCase().includes(q) ||
+        id.toLowerCase().includes(q) ||
+        cat.toLowerCase().includes(q);
 
       const matchCat =
         selectedCategoryFilter === 'all' || p.category === selectedCategoryFilter;
@@ -291,16 +405,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   }, [products, searchProductQuery, selectedCategoryFilter]);
 
   const totalStockUnits = useMemo(() => {
-    return products.reduce((acc, p) => acc + (stockEditValues[p.id] ?? p.stockCount), 0);
+    if (!Array.isArray(products)) return 0;
+    return products.reduce((acc, p) => acc + (stockEditValues[p.id] ?? p.stockCount ?? 0), 0);
   }, [products, stockEditValues]);
 
   const lowStockCount = useMemo(() => {
-    return products.filter((p) => (stockEditValues[p.id] ?? p.stockCount) < 10).length;
+    if (!Array.isArray(products)) return 0;
+    return products.filter((p) => (stockEditValues[p.id] ?? p.stockCount ?? 0) < 10).length;
   }, [products, stockEditValues]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/90 backdrop-blur-lg overflow-hidden font-mono">
-      <div className="relative w-full max-w-7xl h-[94vh] bg-[#0c0d0f] border border-[#27272a] rounded-xl flex flex-col shadow-2xl overflow-hidden text-[#f4f4f5]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto font-mono">
+      <div className="relative w-full max-w-7xl max-h-[96vh] h-[94vh] bg-[#121316] border border-[#27272a] rounded-xl flex flex-col shadow-2xl overflow-hidden text-[#f4f4f5]">
         
         {/* ========================================================= */}
         {/* VIEW 1: ADMIN LOGIN SCREEN (If not logged in)              */}
@@ -676,6 +792,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             ? 'text-purple-400 border-purple-500/30 bg-purple-950/20'
                             : 'text-emerald-400 border-emerald-500/30 bg-emerald-950/20';
 
+                        const orderNum = order.orderNumber || order.id || 'JRRVS-ORDER';
+                        const addr = order.deliveryAddress || {};
+                        const items = Array.isArray(order.items) ? order.items : [];
+                        const totalUnits = items.reduce((s, i) => s + (Number(i?.quantity) || 1), 0);
+
                         return (
                           <div
                             key={order.id}
@@ -686,10 +807,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               
                               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                                 <span className="font-heading font-black text-white text-base tracking-tight">
-                                  {order.orderNumber}
+                                  {orderNum}
                                 </span>
                                 <button
-                                  onClick={() => handleCopyOrderId(order.orderNumber, order.id)}
+                                  onClick={() => handleCopyOrderId(orderNum, order.id)}
                                   className="text-[#71717a] hover:text-white p-1"
                                   title="Copy Order Number"
                                 >
@@ -700,7 +821,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                   )}
                                 </button>
                                 <span className="text-[11px] text-[#71717a]">
-                                  Placed: {order.createdAt}
+                                  Placed: {order.createdAt || 'Recent'}
                                 </span>
                               </div>
 
@@ -709,13 +830,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 <div className="text-right">
                                   <span className="text-[10px] text-[#71717a] block uppercase">Total Amount</span>
                                   <span className="font-heading font-bold text-white text-sm">
-                                    ₹{order.totalAmount.toLocaleString('en-IN')}
+                                    ₹{(Number(order.totalAmount) || 0).toLocaleString('en-IN')}
                                   </span>
                                 </div>
 
                                 {/* Status Badge */}
                                 <div className={`px-2.5 py-1 text-xs rounded-full border font-bold ${statusColor}`}>
-                                  {order.status}
+                                  {order.status || 'Confirmed'}
                                 </div>
                               </div>
 
@@ -732,24 +853,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                 <div className="space-y-1 text-zinc-300">
                                   <p className="font-bold text-white flex items-center gap-1.5">
                                     <User className="w-3 h-3 text-[#a1a1aa]" />
-                                    <span>{order.deliveryAddress.fullName}</span>
+                                    <span>{addr.fullName || 'Student Customer'}</span>
                                   </p>
                                   <p className="flex items-center gap-1.5 text-[11px] text-[#a1a1aa]">
                                     <Phone className="w-3 h-3 text-[#71717a]" />
-                                    <span>{order.deliveryAddress.phone}</span>
+                                    <span>{addr.phone || 'No phone'}</span>
                                     <span>·</span>
                                     <Mail className="w-3 h-3 text-[#71717a]" />
-                                    <span>{order.deliveryAddress.email}</span>
+                                    <span>{addr.email || 'No email'}</span>
                                   </p>
                                   <p className="flex items-start gap-1.5 text-[11px] text-zinc-300">
                                     <Building className="w-3 h-3 text-[#71717a] shrink-0 mt-0.5" />
                                     <span>
-                                      {order.deliveryAddress.university} — {order.deliveryAddress.hostelOrAddress}, {order.deliveryAddress.city} ({order.deliveryAddress.pincode})
+                                      {addr.university || 'Campus'} — {addr.hostelOrAddress || 'Hostel'}, {addr.city || 'City'} {addr.pincode ? `(${addr.pincode})` : ''}
                                     </span>
                                   </p>
-                                  {order.deliveryAddress.deliveryNotes && (
+                                  {addr.deliveryNotes && (
                                     <p className="text-[10px] text-amber-300/80 italic mt-1">
-                                      Notes: "{order.deliveryAddress.deliveryNotes}"
+                                      Notes: "{addr.deliveryNotes}"
                                     </p>
                                   )}
                                 </div>
@@ -758,29 +879,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                               {/* Items Breakdown */}
                               <div className="md:col-span-4 space-y-2 bg-[#17181c] p-3 rounded-lg border border-[#202126]">
                                 <span className="text-[10px] text-[#71717a] uppercase tracking-wider block font-bold">
-                                  Ordered Streetwear Items ({order.items.reduce((s, i) => s + i.quantity, 0)})
+                                  Ordered Streetwear Items ({totalUnits})
                                 </span>
                                 <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                                  {order.items.map((item, idx) => (
-                                    <div key={idx} className="flex items-center gap-2 text-[11px]">
-                                      <img
-                                        src={item.product.image}
-                                        alt={item.product.name}
-                                        className="w-9 h-9 object-cover rounded border border-[#27272a] shrink-0"
-                                      />
-                                      <div className="flex-1 min-w-0">
-                                        <p className="font-bold text-white truncate">{item.product.name}</p>
-                                        <p className="text-[10px] text-[#a1a1aa]">
-                                          Size: {item.selectedSize} · {item.selectedColor} · Qty: {item.quantity}
-                                        </p>
+                                  {items.map((item, idx) => {
+                                    const prodName = item?.product?.name || 'Streetwear Garment';
+                                    const prodImg = item?.product?.image || 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=200&q=80';
+                                    const prodPrice = Number(item?.product?.price) || 0;
+                                    const itemQty = Number(item?.quantity) || 1;
+
+                                    return (
+                                      <div key={idx} className="flex items-center gap-2 text-[11px]">
+                                        <img
+                                          src={prodImg}
+                                          alt={prodName}
+                                          className="w-9 h-9 object-cover rounded border border-[#27272a] shrink-0 bg-zinc-900"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-bold text-white truncate">{prodName}</p>
+                                          <p className="text-[10px] text-[#a1a1aa]">
+                                            Size: {item?.selectedSize || 'Standard'} · {item?.selectedColor || 'Standard'} · Qty: {itemQty}
+                                          </p>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <span className="font-bold text-zinc-300">
+                                            ₹{(prodPrice * itemQty).toLocaleString('en-IN')}
+                                          </span>
+                                        </div>
                                       </div>
-                                      <div className="text-right shrink-0">
-                                        <span className="font-bold text-zinc-300">
-                                          ₹{(item.product.price * item.quantity).toLocaleString('en-IN')}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
 
@@ -802,7 +930,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                                     </div>
 
                                     <div className="text-[11px] text-[#a1a1aa]">
-                                      Status: <strong className="text-white">{order.paymentStatus}</strong>
+                                      Status: <strong className="text-white">{order.paymentStatus || 'Paid'}</strong>
                                     </div>
 
                                     {order.upiRefId && (
@@ -1248,19 +1376,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <p className="text-[10px] text-zinc-600">CAMPUS DISPATCH & COURIER MANIFEST</p>
               </div>
               <div className="text-right">
-                <p className="font-bold text-sm">{selectedOrderForSlip.orderNumber}</p>
-                <p className="text-[10px] text-zinc-500">{selectedOrderForSlip.createdAt}</p>
+                <p className="font-bold text-sm">{selectedOrderForSlip.orderNumber || selectedOrderForSlip.id}</p>
+                <p className="text-[10px] text-zinc-500">{selectedOrderForSlip.createdAt || 'Recent'}</p>
               </div>
             </div>
 
             {/* Courier & Dorm Address Box */}
             <div className="border border-black p-3 space-y-1">
-              <p className="font-black text-sm uppercase">{selectedOrderForSlip.deliveryAddress.fullName}</p>
-              <p className="font-bold">{selectedOrderForSlip.deliveryAddress.university}</p>
-              <p>{selectedOrderForSlip.deliveryAddress.hostelOrAddress}</p>
-              <p>{selectedOrderForSlip.deliveryAddress.city} - {selectedOrderForSlip.deliveryAddress.pincode}</p>
-              <p className="pt-1">Phone: <strong>{selectedOrderForSlip.deliveryAddress.phone}</strong></p>
-              {selectedOrderForSlip.deliveryAddress.deliveryNotes && (
+              <p className="font-black text-sm uppercase">{selectedOrderForSlip.deliveryAddress?.fullName || 'Student Customer'}</p>
+              <p className="font-bold">{selectedOrderForSlip.deliveryAddress?.university || 'Campus'}</p>
+              <p>{selectedOrderForSlip.deliveryAddress?.hostelOrAddress || 'Hostel'}</p>
+              <p>{selectedOrderForSlip.deliveryAddress?.city || 'City'} {selectedOrderForSlip.deliveryAddress?.pincode ? `- ${selectedOrderForSlip.deliveryAddress.pincode}` : ''}</p>
+              <p className="pt-1">Phone: <strong>{selectedOrderForSlip.deliveryAddress?.phone || 'N/A'}</strong></p>
+              {selectedOrderForSlip.deliveryAddress?.deliveryNotes && (
                 <p className="text-[10px] bg-zinc-100 p-1 mt-1 border border-zinc-300">
                   Gate/Mailroom Note: {selectedOrderForSlip.deliveryAddress.deliveryNotes}
                 </p>
@@ -1280,12 +1408,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedOrderForSlip.items.map((it, idx) => (
+                  {(selectedOrderForSlip.items || []).map((it, idx) => (
                     <tr key={idx} className="border-b border-zinc-100">
-                      <td className="py-1 font-bold">{it.product.name}</td>
-                      <td className="py-1 text-center">{it.selectedSize}</td>
-                      <td className="py-1 text-center">{it.selectedColor}</td>
-                      <td className="py-1 text-right">{it.quantity}</td>
+                      <td className="py-1 font-bold">{it?.product?.name || 'Streetwear Garment'}</td>
+                      <td className="py-1 text-center">{it?.selectedSize || 'Std'}</td>
+                      <td className="py-1 text-center">{it?.selectedColor || 'Std'}</td>
+                      <td className="py-1 text-right">{it?.quantity || 1}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1296,11 +1424,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div className="flex justify-between items-center text-[11px] pt-1 border-t border-zinc-200">
               <div>
                 <span>Payment: </span>
-                <strong className="uppercase">{selectedOrderForSlip.paymentMethod} ({selectedOrderForSlip.paymentStatus})</strong>
+                <strong className="uppercase">{selectedOrderForSlip.paymentMethod || 'upi'} ({selectedOrderForSlip.paymentStatus || 'Paid'})</strong>
               </div>
               <div>
                 <span>Total: </span>
-                <strong className="text-sm">₹{selectedOrderForSlip.totalAmount.toLocaleString('en-IN')}</strong>
+                <strong className="text-sm">₹{(Number(selectedOrderForSlip.totalAmount) || 0).toLocaleString('en-IN')}</strong>
               </div>
             </div>
 
@@ -1335,3 +1463,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     </div>
   );
 };
+
+export const AdminPortal: React.FC<AdminPortalProps> = (props) => {
+  if (!props.isOpen) return null;
+  return (
+    <AdminPortalErrorBoundary onClose={props.onClose}>
+      <AdminPortalInner {...props} />
+    </AdminPortalErrorBoundary>
+  );
+};
+
