@@ -147,46 +147,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Quick Demo Account Helper (for testing convenience)
-  const handleDemoSignIn = async () => {
-    setLoginEmail('aryan.patel@campus.edu.in');
-    setLoginPassword('jrrvs1234');
-    setLoading(true);
-    setErrorMessage('');
-
-    try {
-      // Try login first
-      const profile = await loginWithEmail('aryan.patel@campus.edu.in', 'jrrvs1234');
-      if (profile) {
-        onAuthSuccess(profile);
-        onClose();
-        return;
-      }
-    } catch {
-      // If not yet created, register demo account
-      try {
-        const profile = await registerWithEmail(
-          'aryan.patel@campus.edu.in',
-          'jrrvs1234',
-          'Aryan Patel',
-          {
-            phone: '9876543210',
-            university: 'Delhi University (North Campus)',
-            hostel: 'Jubilee Hall Hostel, Room 204',
-            city: 'New Delhi',
-            pincode: '110007',
-          }
-        );
-        onAuthSuccess(profile);
-        onClose();
-      } catch (e: any) {
-        setErrorMessage('Demo sign in failed: ' + (e.message || 'Unknown error'));
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto"
@@ -345,18 +305,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </>
               )}
             </button>
-
-            {/* Quick Demo Button */}
-            <div className="pt-3 border-t border-[#1f2024] text-center">
-              <button
-                type="button"
-                onClick={handleDemoSignIn}
-                disabled={loading}
-                className="text-xs font-mono text-emerald-400 hover:text-emerald-300 underline underline-offset-4 transition-colors"
-              >
-                1-Click Student Demo Sign In (Aryan Patel)
-              </button>
-            </div>
           </form>
         )}
 
@@ -503,13 +451,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
         )}
-
-        <div className="mt-4 pt-3 border-t border-[#1e2024] text-center">
-          <p className="text-[10px] text-[#71717a] font-mono">
-            Store Administrator? Login with admin credentials (<span className="text-amber-400">rehanpateljrrvs@gmail.com</span>) or access the Admin Portal from the top bar.
-          </p>
-        </div>
-
       </div>
     </div>
   );

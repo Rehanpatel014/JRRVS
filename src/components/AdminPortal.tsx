@@ -156,7 +156,7 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
     }
   });
 
-  const [loginEmail, setLoginEmail] = useState('rehanpateljrrvs@gmail.com');
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -224,17 +224,11 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
         loadOrders();
       } else {
         setLoginError(
-          `Unauthorized: Only ${ADMIN_EMAIL} with the assigned security password can access the JRRVS Admin Terminal.`
+          'Access denied: Invalid administrator email or security passcode.'
         );
       }
       setIsAuthenticating(false);
     }, 400);
-  };
-
-  const handleFillDemoAdmin = () => {
-    setLoginEmail('rehanpateljrrvs@gmail.com');
-    setLoginPass('454545');
-    setLoginError(null);
   };
 
   const handleAdminLogout = () => {
@@ -445,8 +439,8 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                 <p className="text-xs text-[#a1a1aa]">
                   Restricted Access · Authorized Personnel Only
                 </p>
-                <div className="text-[11px] text-amber-400/90 bg-amber-950/30 border border-amber-500/20 px-3 py-1.5 rounded">
-                  Required Admin: <span className="font-bold underline">{ADMIN_EMAIL}</span>
+                <div className="text-[11px] text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded">
+                  Secure Administrator Login
                 </div>
               </div>
 
@@ -468,9 +462,10 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                     <input
                       type="email"
                       required
+                      autoComplete="off"
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="rehanpateljrrvs@gmail.com"
+                      placeholder="admin@jrrvs.com"
                       className="w-full bg-[#18191c] border border-[#27272a] focus:border-white rounded-lg pl-9 pr-3 py-2 text-white placeholder-[#52525b] outline-none"
                     />
                   </div>
@@ -485,26 +480,14 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                     <input
                       type="password"
                       required
+                      autoComplete="off"
                       value={loginPass}
                       onChange={(e) => setLoginPass(e.target.value)}
-                      placeholder="Enter pass (454545)"
+                      placeholder="••••••••"
                       className="w-full bg-[#18191c] border border-[#27272a] focus:border-white rounded-lg pl-9 pr-3 py-2 text-white placeholder-[#52525b] outline-none"
                     />
                   </div>
                 </div>
-
-                {/* Quick Auto-Fill helper for convenience */}
-                <button
-                  type="button"
-                  onClick={handleFillDemoAdmin}
-                  className="w-full text-left text-[11px] text-[#a1a1aa] hover:text-white bg-[#18191c] hover:bg-[#202124] border border-[#27272a] rounded px-3 py-2 flex items-center justify-between transition-colors"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Auto-Fill Admin Credentials (rehanpateljrrvs@gmail.com / 454545)</span>
-                  </span>
-                  <span className="text-[10px] text-amber-400 font-bold uppercase">Click</span>
-                </button>
 
                 <button
                   type="submit"
