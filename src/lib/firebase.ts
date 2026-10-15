@@ -177,11 +177,21 @@ export const saveUserProfileToDb = async (uid: string, profile: Partial<StudentP
 import { INITIAL_ADMIN_ORDERS } from '../data/seedOrders';
 
 // Admin Security Constants
+export const ADMIN_EMAILS = [
+  'rehanpateljrrvs@gmail.com',
+  'rehanpatel6269@gmail.com',
+];
 export const ADMIN_EMAIL = 'rehanpateljrrvs@gmail.com';
 export const ADMIN_PASS = '454545';
 
+export const isAdminUser = (email?: string | null): boolean => {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return ADMIN_EMAILS.some((adm) => adm.toLowerCase() === clean);
+};
+
 export const verifyAdminCredentials = (email: string, pass: string): boolean => {
-  return email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() && pass.trim() === ADMIN_PASS;
+  return isAdminUser(email) && pass.trim() === ADMIN_PASS;
 };
 
 // Order Persistence in Firestore (Both User Sub-collection and Master Admin collection)

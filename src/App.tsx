@@ -28,6 +28,7 @@ import {
   updateOrderStatusInFirestore,
   fetchInventoryStockFromFirestore,
   logoutUser,
+  isAdminUser,
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -345,7 +346,7 @@ export default function App() {
         onSignOut={handleSignOut}
         onOpenSizeCalc={() => setIsSizeCalcOpen(true)}
         onOpenAdmin={() => {
-          if (currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com') {
+          if (isAdminUser(currentUser?.email)) {
             setIsAdminOpen(true);
           }
         }}
@@ -405,11 +406,11 @@ export default function App() {
         onOpenSizeCalc={() => setIsSizeCalcOpen(true)}
         onOpenOrders={() => setIsOrdersOpen(true)}
         onOpenAdmin={() => {
-          if (currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com') {
+          if (isAdminUser(currentUser?.email)) {
             setIsAdminOpen(true);
           }
         }}
-        isAdmin={currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com'}
+        isAdmin={isAdminUser(currentUser?.email)}
         onScrollToSection={scrollToSection}
       />
 
@@ -483,8 +484,8 @@ export default function App() {
         reasonMessage={authReason}
       />
 
-      {/* Admin Portal HQ Modal - Restricted strictly to rehanpateljrrvs@gmail.com */}
-      {currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com' && (
+      {/* Admin Portal HQ Modal */}
+      {isAdminUser(currentUser?.email) && (
         <AdminPortal
           isOpen={isAdminOpen}
           onClose={() => setIsAdminOpen(false)}

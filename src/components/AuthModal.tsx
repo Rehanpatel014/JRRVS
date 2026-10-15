@@ -14,7 +14,7 @@ import {
   CheckCircle,
   Sparkles,
 } from 'lucide-react';
-import { registerWithEmail, loginWithEmail, StudentProfile } from '../lib/firebase';
+import { registerWithEmail, loginWithEmail, StudentProfile, isAdminUser, ADMIN_PASS } from '../lib/firebase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -59,12 +59,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setSuccessMessage('');
     setLoading(true);
 
-    // Check for Admin Credentials (rehanpateljrrvs@gmail.com / 454545)
-    if (loginEmail.trim().toLowerCase() === 'rehanpateljrrvs@gmail.com' && loginPassword === '454545') {
+    // Check for Admin Credentials (rehanpateljrrvs@gmail.com or rehanpatel6269@gmail.com / 454545)
+    if (isAdminUser(loginEmail.trim()) && loginPassword === ADMIN_PASS) {
       localStorage.setItem('jrrvs_admin_auth', 'true');
       const adminProfile: StudentProfile = {
         id: 'admin-rehan',
-        email: 'rehanpateljrrvs@gmail.com',
+        email: loginEmail.trim().toLowerCase(),
         displayName: 'Rehan Patel (Admin)',
         university: 'JRRVS Apparel HQ',
         createdAt: new Date().toISOString(),

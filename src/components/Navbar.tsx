@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShoppingBag, Heart, Search, Ruler, Menu, X, Sparkles, Package, User, LogOut, Shield } from 'lucide-react';
 import { Category } from '../types';
-import { StudentProfile } from '../lib/firebase';
+import { StudentProfile, isAdminUser } from '../lib/firebase';
 
 interface NavbarProps {
   cartCount: number;
@@ -207,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                         )}
                       </div>
 
-                      {currentUser.email.toLowerCase() === 'rehanpateljrrvs@gmail.com' && (
+                      {isAdminUser(currentUser.email) && (
                         <button
                           onClick={() => {
                             setUserDropdownOpen(false);
@@ -256,8 +256,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
 
-            {/* Admin Portal Button - Strictly visible ONLY in rehanpateljrrvs@gmail.com account */}
-            {currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com' && (
+            {/* Admin Portal Button */}
+            {isAdminUser(currentUser?.email) && (
               <button
                 onClick={onOpenAdmin}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono rounded border text-amber-400 bg-amber-950/40 border-amber-500/40 font-bold hover:bg-amber-950/70 transition-colors shadow-sm"
@@ -359,7 +359,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {currentUser?.email.toLowerCase() === 'rehanpateljrrvs@gmail.com' && (
+
+            {isAdminUser(currentUser?.email) && (
               <button
                 onClick={() => {
                   onOpenAdmin();

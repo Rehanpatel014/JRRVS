@@ -189,10 +189,9 @@ export const Footer: React.FC<FooterProps> = ({
           <div>
             © {new Date().getFullYear()} JRRVS CLOTHING CO. ALL RIGHTS RESERVED.
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
             <span>TERMS OF SERVICE</span>
             <span>PRIVACY DISCLOSURE</span>
-            <span>DORM MAILROOM COMPLIANCE</span>
             {isAdmin && (
               <button
                 onClick={onOpenAdmin}
