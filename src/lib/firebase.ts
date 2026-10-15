@@ -32,18 +32,49 @@ const firebaseConfig = {
   appId: firebaseConfigData.appId || "1:850255820516:web:cd75aea3e61a88a2addef1",
 };
 
-// Initialize Firebase App
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+// Safe Firebase Initialization
+let appInstance: any;
+try {
+  appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+} catch (e) {
+  console.warn('Firebase initializeApp warning:', e);
+  appInstance = getApps()[0] || null;
+}
+export const app = appInstance;
 
-// Initialize Firebase Auth
-export const auth = getAuth(app);
+// Safe Firebase Auth
+let authInstance: any = null;
+try {
+  if (appInstance) {
+    authInstance = getAuth(appInstance);
+  }
+} catch (e) {
+  console.warn('Firebase getAuth warning:', e);
+}
+export const auth = authInstance;
 
-// Initialize Firestore (support named database if present)
-const databaseId = firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
-  ? firebaseConfigData.firestoreDatabaseId
-  : undefined;
+// Safe Firestore (support named database if configured, fallback cleanly to default)
+let dbInstance: any = null;
+try {
+  if (appInstance) {
+    const databaseId =
+      firebaseConfigData.firestoreDatabaseId && firebaseConfigData.firestoreDatabaseId !== '(default)'
+        ? firebaseConfigData.firestoreDatabaseId
+        : undefined;
+    dbInstance = databaseId ? getFirestore(appInstance, databaseId) : getFirestore(appInstance);
+  }
+} catch (e) {
+  console.warn('Named Firestore database initialization failed, falling back to default:', e);
+  try {
+    if (appInstance) {
+      dbInstance = getFirestore(appInstance);
+    }
+  } catch (err) {
+    console.warn('Default Firestore initialization failed:', err);
+  }
+}
+export const db = dbInstance;
 
-export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 
 // Optional sanity connection test
 (async () => {

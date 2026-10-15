@@ -102,7 +102,9 @@ export default function App() {
 
   // Subscribe to Firebase Auth State Changes
   useEffect(() => {
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+
       if (fbUser) {
         const profile = await fetchUserProfile(fbUser.uid);
         setCurrentUser(profile);
