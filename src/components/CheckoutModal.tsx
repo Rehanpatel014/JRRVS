@@ -123,7 +123,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       
       const newOrder: Order = {
         id: `ord-${Date.now()}`,
-        userId: currentUser?.id,
+        userId: currentUser?.id || 'guest',
         orderNumber: randomOrderNum,
         createdAt: new Date().toLocaleDateString('en-IN', {
           day: 'numeric',
@@ -135,18 +135,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         items: [...cartItems],
         totalAmount: total,
         deliveryAddress: {
-          fullName: formData.name,
-          phone: formData.phone,
-          email: formData.email,
-          university: formData.university,
-          hostelOrAddress: formData.dormBuilding,
-          city: formData.city,
-          pincode: formData.zip,
-          deliveryNotes: formData.deliveryNotes,
+          fullName: formData.name || '',
+          phone: formData.phone || '',
+          email: formData.email || '',
+          university: formData.university || '',
+          hostelOrAddress: formData.dormBuilding || '',
+          city: formData.city || '',
+          pincode: formData.zip || '',
+          deliveryNotes: formData.deliveryNotes || '',
         },
         paymentMethod: formData.paymentMethod,
         paymentStatus: paymentStatus,
-        upiRefId: upiRef || (formData.paymentMethod === 'upi' ? `UPI${Math.floor(1000000000 + Math.random() * 9000000000)}` : undefined),
+        upiRefId: upiRef || (formData.paymentMethod === 'upi' ? `UPI${Math.floor(1000000000 + Math.random() * 9000000000)}` : ''),
         status: 'Confirmed',
         estimatedDeliveryDate: '2-3 Business Days (Hostel Mailroom)',
       };

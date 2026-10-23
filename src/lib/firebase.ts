@@ -197,11 +197,20 @@ export const isMockOrderId = (id?: string | null): boolean => {
   return id.startsWith('ord-171800100');
 };
 
+export const sanitizeForFirestore = (obj: any): any => {
+  return JSON.parse(JSON.stringify(obj, (_, v) => (v === undefined ? null : v)));
+};
+
 // Order Persistence in Firestore (Both User Sub-collection and Master Admin collection)
 export const saveOrderToFirestore = async (userId: string, order: Order): Promise<void> => {
-  // 1. Save to master all_orders collection for Admin portal
+  const cleanOrder = sanitizeForFirestore({
+    ...order,
+    userId: userId || order.userId || 'guest',
+  });
+
+  // 1. Save to master all_orders collection for Admin portal (accessible across all devices)
   try {
-    await setDoc(doc(db, 'all_orders', order.id), order);
+    await setDoc(doc(db, 'all_orders', order.id), cleanOrder);
   } catch (err) {
     console.error('Failed to save order to master all_orders Firestore collection:', err);
   }
@@ -209,7 +218,7 @@ export const saveOrderToFirestore = async (userId: string, order: Order): Promis
   // 2. Save to user sub-collection
   if (userId && userId !== 'guest') {
     try {
-      await setDoc(doc(db, 'users', userId, 'orders', order.id), order);
+      await setDoc(doc(db, 'users', userId, 'orders', order.id), cleanOrder);
     } catch (err) {
       console.error('Failed to save order to user Firestore sub-collection:', err);
     }
