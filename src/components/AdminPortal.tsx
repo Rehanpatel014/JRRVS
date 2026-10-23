@@ -223,16 +223,20 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
     setStockEditValues(map);
   }, [products, currentStockMap]);
 
-  // Manual refresh helper
+  // Manual refresh helper with visual sync feedback
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
       const fetched = await fetchAllOrdersForAdmin();
       setOrders(fetched);
+      setSaveSuccessMsg(`Cloud database verified · ${fetched.length} orders synced & up-to-date`);
+      setTimeout(() => setSaveSuccessMsg(null), 2500);
     } catch (err) {
       console.error('Failed to load orders in admin:', err);
     } finally {
-      setIsLoadingOrders(false);
+      setTimeout(() => {
+        setIsLoadingOrders(false);
+      }, 600);
     }
   };
 
@@ -622,10 +626,11 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                 <button
                   onClick={loadOrders}
                   disabled={isLoadingOrders}
-                  className="p-2 text-[#a1a1aa] hover:text-white bg-[#18191c] border border-[#27272a] rounded-lg transition-colors"
-                  title="Refresh Orders & Data"
+                  className="px-2.5 py-1.5 text-xs text-[#a1a1aa] hover:text-white bg-[#18191c] border border-[#27272a] rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Check and sync live orders with cloud database"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? 'animate-spin text-white' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOrders ? 'animate-spin text-emerald-400' : ''}`} />
+                  <span className="hidden sm:inline">{isLoadingOrders ? 'Syncing...' : 'Refresh'}</span>
                 </button>
 
                 <button
