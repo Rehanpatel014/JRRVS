@@ -19,6 +19,7 @@ import {
   orderBy,
   getDocs,
   updateDoc,
+  onSnapshot,
 } from 'firebase/firestore';
 import { Order, OrderStatus } from '../types';
 import firebaseConfigData from '../../firebase-applet-config.json';
@@ -190,27 +191,35 @@ export const verifyAdminCredentials = (email: string, pass: string): boolean => 
   return isAdminUser(email) && pass.trim() === ADMIN_PASS;
 };
 
+// Helper to filter out legacy mock seed orders
+export const isMockOrderId = (id?: string | null): boolean => {
+  if (!id) return false;
+  return id.startsWith('ord-171800100');
+};
+
 // Order Persistence in Firestore (Both User Sub-collection and Master Admin collection)
 export const saveOrderToFirestore = async (userId: string, order: Order): Promise<void> => {
-  // 1. Save to user sub-collection
-  try {
-    await setDoc(doc(db, 'users', userId, 'orders', order.id), order);
-  } catch (err) {
-    console.error('Failed to save order to user Firestore sub-collection:', err);
-  }
-
-  // 2. Save to master all_orders collection for Admin portal
+  // 1. Save to master all_orders collection for Admin portal
   try {
     await setDoc(doc(db, 'all_orders', order.id), order);
   } catch (err) {
     console.error('Failed to save order to master all_orders Firestore collection:', err);
   }
 
-  // 3. Mirror in master localStorage ledger
+  // 2. Save to user sub-collection
+  if (userId && userId !== 'guest') {
+    try {
+      await setDoc(doc(db, 'users', userId, 'orders', order.id), order);
+    } catch (err) {
+      console.error('Failed to save order to user Firestore sub-collection:', err);
+    }
+  }
+
+  // 3. Mirror in master localStorage ledger (without dummy mock orders)
   try {
     const raw = localStorage.getItem('jrrvs_master_orders');
-    const existing: Order[] = raw ? JSON.parse(raw) : INITIAL_ADMIN_ORDERS;
-    const filtered = existing.filter((o) => o.id !== order.id);
+    const existing: Order[] = raw ? JSON.parse(raw) : [];
+    const filtered = existing.filter((o) => o.id !== order.id && !isMockOrderId(o.id));
     localStorage.setItem('jrrvs_master_orders', JSON.stringify([order, ...filtered]));
   } catch {
     // ignore
@@ -218,14 +227,54 @@ export const saveOrderToFirestore = async (userId: string, order: Order): Promis
 };
 
 export const fetchOrdersFromFirestore = async (userId: string): Promise<Order[]> => {
+  if (!userId || userId === 'guest') return [];
   try {
     const ordersRef = collection(db, 'users', userId, 'orders');
     const q = query(ordersRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => d.data() as Order);
+    const list = snapshot.docs
+      .map((d) => d.data() as Order)
+      .filter((o) => !isMockOrderId(o.id));
+    return list;
   } catch (err) {
     console.error('Failed to fetch orders from Firestore, fallback to local:', err);
+    try {
+      const userKey = `jrrvs_orders_${userId}`;
+      const cached = localStorage.getItem(userKey);
+      if (cached) {
+        return (JSON.parse(cached) as Order[]).filter((o) => !isMockOrderId(o.id));
+      }
+    } catch {
+      // ignore
+    }
     return [];
+  }
+};
+
+// Real-Time Listener for User's Private Orders
+export const subscribeToUserOrders = (
+  userId: string,
+  onUpdate: (orders: Order[]) => void
+): (() => void) => {
+  if (!db || !userId || userId === 'guest') return () => {};
+  try {
+    const ordersRef = collection(db, 'users', userId, 'orders');
+    return onSnapshot(
+      ordersRef,
+      (snapshot) => {
+        const list = snapshot.docs
+          .map((d) => d.data() as Order)
+          .filter((o) => !isMockOrderId(o.id));
+        list.sort((a, b) => (b.id > a.id ? 1 : -1));
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn('Live user orders listener error:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to user orders:', err);
+    return () => {};
   }
 };
 
@@ -238,7 +287,14 @@ export const updateOrderStatusInFirestore = async (
     const orderDocRef = doc(db, 'users', userId, 'orders', orderId);
     await updateDoc(orderDocRef, { status: newStatus });
   } catch (err) {
-    console.error('Failed to update order status in Firestore:', err);
+    console.warn('Update user orders in Firestore failed:', err);
+  }
+
+  try {
+    const masterDocRef = doc(db, 'all_orders', orderId);
+    await updateDoc(masterDocRef, { status: newStatus });
+  } catch (err) {
+    console.warn('Update all_orders in Firestore failed:', err);
   }
 };
 
@@ -246,38 +302,63 @@ export const updateOrderStatusInFirestore = async (
 export const fetchAllOrdersForAdmin = async (): Promise<Order[]> => {
   let orders: Order[] = [];
 
-  // Try Firestore all_orders first
+  // 1. Try Firestore all_orders first
   try {
     const allOrdersRef = collection(db, 'all_orders');
     const q = query(allOrdersRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
-    orders = snapshot.docs.map((d) => d.data() as Order);
+    orders = snapshot.docs
+      .map((d) => d.data() as Order)
+      .filter((o) => !isMockOrderId(o.id));
   } catch (err) {
-    console.warn('Could not query Firestore all_orders directly (admin fallback active):', err);
+    console.warn('Could not query Firestore all_orders directly:', err);
   }
 
-  // Merge with localStorage master orders ledger
+  // 2. Merge with localStorage master orders ledger
   try {
     const localRaw = localStorage.getItem('jrrvs_master_orders');
-    const localOrders: Order[] = localRaw ? JSON.parse(localRaw) : INITIAL_ADMIN_ORDERS;
-    
-    // Merge by id, preferring Firestore version if exists
+    const localOrders: Order[] = localRaw ? JSON.parse(localRaw) : [];
+    const validLocal = localOrders.filter((o) => !isMockOrderId(o.id));
+
     const orderMap = new Map<string, Order>();
-    localOrders.forEach((o) => orderMap.set(o.id, o));
+    validLocal.forEach((o) => orderMap.set(o.id, o));
     orders.forEach((o) => orderMap.set(o.id, o));
-    
+
     const combined = Array.from(orderMap.values());
-    if (combined.length === 0) {
-      localStorage.setItem('jrrvs_master_orders', JSON.stringify(INITIAL_ADMIN_ORDERS));
-      return INITIAL_ADMIN_ORDERS;
-    }
+    combined.sort((a, b) => (b.id > a.id ? 1 : -1));
     return combined;
   } catch {
-    return orders.length > 0 ? orders : INITIAL_ADMIN_ORDERS;
+    return orders;
   }
 };
 
-// ADMIN: Update order status across all records
+// Real-Time Listener for Admin to receive new orders and live updates
+export const subscribeToAllOrdersForAdmin = (
+  onUpdate: (orders: Order[]) => void
+): (() => void) => {
+  if (!db) return () => {};
+  try {
+    const allOrdersRef = collection(db, 'all_orders');
+    return onSnapshot(
+      allOrdersRef,
+      (snapshot) => {
+        const list = snapshot.docs
+          .map((d) => d.data() as Order)
+          .filter((o) => !isMockOrderId(o.id));
+        list.sort((a, b) => (b.id > a.id ? 1 : -1));
+        onUpdate(list);
+      },
+      (err) => {
+        console.warn('Live all_orders listener error:', err);
+      }
+    );
+  } catch (err) {
+    console.warn('Failed to subscribe to all orders for admin:', err);
+    return () => {};
+  }
+};
+
+// ADMIN: Update order status across all records (Master all_orders & User subcollection)
 export const updateMasterOrderStatus = async (
   orderId: string,
   userId: string | undefined,
@@ -290,21 +371,39 @@ export const updateMasterOrderStatus = async (
     console.warn('Could not update all_orders document in Firestore:', err);
   }
 
-  // Update in user subcollection if user exists
-  if (userId && userId !== 'guest') {
+  // Determine user ID if not provided
+  let effectiveUserId = userId;
+  if (!effectiveUserId || effectiveUserId === 'guest') {
     try {
-      await updateDoc(doc(db, 'users', userId, 'orders', orderId), { status: newStatus });
+      const snap = await getDoc(doc(db, 'all_orders', orderId));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.userId && data.userId !== 'guest') {
+          effectiveUserId = data.userId;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Update in user subcollection if user exists
+  if (effectiveUserId && effectiveUserId !== 'guest') {
+    try {
+      await updateDoc(doc(db, 'users', effectiveUserId, 'orders', orderId), { status: newStatus });
     } catch (err) {
       console.warn('Could not update user sub-collection order:', err);
     }
 
     // Update in user local cache
     try {
-      const userKey = `jrrvs_orders_${userId}`;
+      const userKey = `jrrvs_orders_${effectiveUserId}`;
       const cached = localStorage.getItem(userKey);
       if (cached) {
         const list: Order[] = JSON.parse(cached);
-        const updated = list.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+        const updated = list
+          .filter((o) => !isMockOrderId(o.id))
+          .map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
         localStorage.setItem(userKey, JSON.stringify(updated));
       }
     } catch {
@@ -315,8 +414,10 @@ export const updateMasterOrderStatus = async (
   // Update master localStorage ledger
   try {
     const raw = localStorage.getItem('jrrvs_master_orders');
-    const existing: Order[] = raw ? JSON.parse(raw) : INITIAL_ADMIN_ORDERS;
-    const updated = existing.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+    const existing: Order[] = raw ? JSON.parse(raw) : [];
+    const updated = existing
+      .filter((o) => !isMockOrderId(o.id))
+      .map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
     localStorage.setItem('jrrvs_master_orders', JSON.stringify(updated));
   } catch {
     // ignore

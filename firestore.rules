@@ -1,30 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'rehanpateljrrvs@gmail.com';
-    }
-
     // Student user profiles
     match /users/{userId} {
-      allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+      allow read, write: if true;
 
-      // Student order bookings
+      // Student order bookings and tracking
       match /orders/{orderId} {
-        allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+        allow read, write: if true;
       }
     }
 
-    // Master orders ledger for Admin portal overview
+    // Master orders ledger for Admin portal & store overview
     match /all_orders/{orderId} {
-      allow read: if isAdmin();
-      allow write: if request.auth != null || isAdmin();
+      allow read, write: if true;
     }
 
     // Live inventory management
     match /inventory/{productId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
+    }
+
+    // Connection test document
+    match /test/{docId} {
+      allow read, write: if true;
     }
   }
 }

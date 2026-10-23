@@ -29,6 +29,7 @@ import {
   fetchInventoryStockFromFirestore,
   logoutUser,
   isAdminUser,
+  subscribeToUserOrders,
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
@@ -105,28 +106,9 @@ export default function App() {
   useEffect(() => {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-
       if (fbUser) {
         const profile = await fetchUserProfile(fbUser.uid);
         setCurrentUser(profile);
-
-        // Fetch user-specific orders from Firestore for this logged-in account
-        try {
-          const firestoreOrders = await fetchOrdersFromFirestore(fbUser.uid);
-          if (firestoreOrders && firestoreOrders.length > 0) {
-            setOrders(firestoreOrders);
-          } else {
-            // Check user-specific localStorage cache
-            const userKey = `jrrvs_orders_${fbUser.uid}`;
-            const cached = localStorage.getItem(userKey);
-            setOrders(cached ? JSON.parse(cached) : []);
-          }
-        } catch (err) {
-          console.error('Error loading orders from Firestore:', err);
-          const userKey = `jrrvs_orders_${fbUser.uid}`;
-          const cached = localStorage.getItem(userKey);
-          setOrders(cached ? JSON.parse(cached) : []);
-        }
       } else {
         // User logged out: clear user and clear order history from view!
         setCurrentUser(null);
@@ -136,6 +118,30 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Real-Time Listener for Current User Orders (Updates instantly when Admin changes status!)
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setOrders([]);
+      return;
+    }
+
+    // 1. Initial load from Firestore / local cache
+    fetchOrdersFromFirestore(currentUser.id).then((initial) => {
+      if (initial && initial.length > 0) {
+        setOrders(initial);
+      }
+    });
+
+    // 2. Real-time Firestore onSnapshot listener
+    const unsubscribe = subscribeToUserOrders(currentUser.id, (liveOrders) => {
+      setOrders(liveOrders);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUser?.id]);
 
   // Synchronize cart to localStorage
   useEffect(() => {
@@ -238,25 +244,26 @@ export default function App() {
 
   // Order operations: Save both to active state and user's Firestore path
   const handleSaveOrder = async (newOrder: Order) => {
+    const targetUserId = currentUser?.id || 'guest';
     const orderWithUser: Order = {
       ...newOrder,
-      userId: currentUser?.id || 'guest',
+      userId: targetUserId,
     };
 
     setOrders((prev) => [orderWithUser, ...prev]);
     handleClearCart();
 
-    // Persist to user-specific Firestore & user-specific storage
-    if (currentUser?.id) {
-      try {
-        await saveOrderToFirestore(currentUser.id, orderWithUser);
+    // Persist to Firestore (both all_orders and user collection)
+    try {
+      await saveOrderToFirestore(targetUserId, orderWithUser);
+      if (currentUser?.id) {
         const userKey = `jrrvs_orders_${currentUser.id}`;
         const existing = localStorage.getItem(userKey);
         const list = existing ? JSON.parse(existing) : [];
         localStorage.setItem(userKey, JSON.stringify([orderWithUser, ...list]));
-      } catch (err) {
-        console.error('Could not save order to Firestore:', err);
       }
+    } catch (err) {
+      console.error('Could not save order to Firestore:', err);
     }
   };
 

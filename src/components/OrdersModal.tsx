@@ -80,14 +80,6 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({
     }
   };
 
-  const handleNextStatus = (order: Order) => {
-    const currentIndex = getStatusIndex(order.status);
-    if (currentIndex < statusSteps.length - 1) {
-      const nextStatus = statusSteps[currentIndex + 1].status;
-      onUpdateOrderStatus(order.id, nextStatus);
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto"
@@ -270,17 +262,11 @@ export const OrdersModal: React.FC<OrdersModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Interactive Status Simulation Trigger */}
-                  {activeOrder.status !== 'Delivered' && (
-                    <button
-                      onClick={() => handleNextStatus(activeOrder)}
-                      className="self-start sm:self-auto px-3 py-1.5 bg-[#1f2024] hover:bg-white hover:text-black text-xs font-mono rounded border border-[#2e3036] transition-colors flex items-center gap-1.5"
-                      title="Advance order to next delivery stage"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Simulate Next Stage</span>
-                    </button>
-                  )}
+                  {/* Real-time Status Sync Badge */}
+                  <div className="self-start sm:self-auto px-3 py-1.5 bg-[#16171b] border border-[#27272a] text-xs font-mono rounded flex items-center gap-2 text-zinc-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Live Dispatch Tracking</span>
+                  </div>
                 </div>
 
                 {/* VISUAL STEPPER: LIVE DELIVERY PIPELINE */}

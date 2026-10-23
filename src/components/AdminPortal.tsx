@@ -40,11 +40,11 @@ import {
   ADMIN_PASS,
   verifyAdminCredentials,
   fetchAllOrdersForAdmin,
+  subscribeToAllOrdersForAdmin,
   updateMasterOrderStatus,
   fetchInventoryStockFromFirestore,
   updateInventoryStockInFirestore,
 } from '../lib/firebase';
-import { INITIAL_ADMIN_ORDERS } from '../data/seedOrders';
 
 interface AdminPortalProps {
   isOpen: boolean;
@@ -179,7 +179,7 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
-  // Load orders when authenticated
+  // Load orders when authenticated & subscribe in real time
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
@@ -187,7 +187,7 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
       setOrders(fetched);
     } catch (err) {
       console.error('Failed to load orders in admin:', err);
-      setOrders(INITIAL_ADMIN_ORDERS);
+      setOrders([]);
     } finally {
       setIsLoadingOrders(false);
     }
@@ -196,6 +196,16 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
   useEffect(() => {
     if (isAdminLoggedIn && isOpen) {
       loadOrders();
+
+      // Real-time Firestore sync: updates when any customer places or modifies an order
+      const unsubscribe = subscribeToAllOrdersForAdmin((liveOrders) => {
+        setOrders(liveOrders);
+        setIsLoadingOrders(false);
+      });
+
+      return () => {
+        unsubscribe();
+      };
     }
   }, [isAdminLoggedIn, isOpen]);
 
@@ -298,15 +308,6 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
     navigator.clipboard.writeText(text);
     setCopiedOrderId(id);
     setTimeout(() => setCopiedOrderId(null), 2000);
-  };
-
-  // Seed sample orders if user wants
-  const handleSeedMoreOrders = () => {
-    const merged = [...INITIAL_ADMIN_ORDERS, ...orders.filter((o) => !INITIAL_ADMIN_ORDERS.some((s) => s.id === o.id))];
-    setOrders(merged);
-    localStorage.setItem('jrrvs_master_orders', JSON.stringify(merged));
-    setSaveSuccessMsg('Sample student campus orders refreshed in terminal');
-    setTimeout(() => setSaveSuccessMsg(null), 3000);
   };
 
   // Filtered Orders (100% defensive against missing or corrupted fields)
@@ -734,15 +735,6 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                         <option value="card">Card</option>
                         <option value="cod">Cash on Delivery</option>
                       </select>
-
-                      <button
-                        onClick={handleSeedMoreOrders}
-                        className="text-[11px] text-zinc-400 hover:text-white bg-[#18191c] border border-[#27272a] px-2.5 py-1.5 rounded-lg flex items-center gap-1.5"
-                        title="Seed / Reset Sample Campus Orders"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                        <span className="hidden lg:inline">Seed Sample Orders</span>
-                      </button>
                     </div>
 
                   </div>
@@ -751,17 +743,10 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
                   {filteredOrders.length === 0 ? (
                     <div className="bg-[#121316] border border-[#222428] rounded-xl p-12 text-center space-y-3">
                       <Package className="w-12 h-12 text-[#52525b] mx-auto" />
-                      <h4 className="text-base font-bold text-white uppercase">No Orders Found</h4>
+                      <h4 className="text-base font-bold text-white uppercase">No Customer Orders Yet</h4>
                       <p className="text-xs text-[#a1a1aa] max-w-md mx-auto">
-                        No orders match your filter criteria or search query. Place a new order from the store or click below to populate sample orders.
+                        No orders match your filter criteria. When students and customers place new orders from the store, their live orders and hostel delivery addresses will appear here in real time.
                       </p>
-                      <button
-                        onClick={handleSeedMoreOrders}
-                        className="px-4 py-2 bg-white text-black font-bold rounded-lg text-xs hover:bg-zinc-200 transition-colors inline-flex items-center gap-2"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Populate Sample Campus Orders</span>
-                      </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
