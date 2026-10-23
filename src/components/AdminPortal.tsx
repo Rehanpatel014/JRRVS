@@ -44,6 +44,7 @@ import {
   updateMasterOrderStatus,
   fetchInventoryStockFromFirestore,
   updateInventoryStockInFirestore,
+  isMockOrderId,
 } from '../lib/firebase';
 
 interface AdminPortalProps {
@@ -164,8 +165,18 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<'orders' | 'stock' | 'analytics' | 'packing'>('orders');
 
-  // Orders State
-  const [orders, setOrders] = useState<Order[]>([]);
+  // Orders State (Initialized immediately from cache to prevent flickering on refresh)
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const cached = localStorage.getItem('jrrvs_master_orders');
+      if (cached) {
+        return (JSON.parse(cached) as Order[]).filter((o) => o?.id && !isMockOrderId(o.id));
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [searchOrderQuery, setSearchOrderQuery] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
@@ -175,29 +186,23 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
   // Inventory Editing State
   const [searchProductQuery, setSearchProductQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
-  const [stockEditValues, setStockEditValues] = useState<Record<string, number>>({});
+  const [stockEditValues, setStockEditValues] = useState<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    products.forEach((p) => {
+      map[p.id] = currentStockMap[p.id] !== undefined ? currentStockMap[p.id] : p.stockCount;
+    });
+    return map;
+  });
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
 
-  // Load orders when authenticated & subscribe in real time
-  const loadOrders = async () => {
-    setIsLoadingOrders(true);
-    try {
-      const fetched = await fetchAllOrdersForAdmin();
-      setOrders(fetched);
-    } catch (err) {
-      console.error('Failed to load orders in admin:', err);
-      setOrders([]);
-    } finally {
-      setIsLoadingOrders(false);
-    }
-  };
-
+  // Single authoritative Real-Time Firestore Sync (no race conditions, stable on every refresh)
   useEffect(() => {
     if (isAdminLoggedIn && isOpen) {
-      loadOrders();
+      if (orders.length === 0) {
+        setIsLoadingOrders(true);
+      }
 
-      // Real-time Firestore sync: updates when any customer places or modifies an order
       const unsubscribe = subscribeToAllOrdersForAdmin((liveOrders) => {
         setOrders(liveOrders);
         setIsLoadingOrders(false);
@@ -218,7 +223,18 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
     setStockEditValues(map);
   }, [products, currentStockMap]);
 
-  if (!isOpen) return null;
+  // Manual refresh helper
+  const loadOrders = async () => {
+    setIsLoadingOrders(true);
+    try {
+      const fetched = await fetchAllOrdersForAdmin();
+      setOrders(fetched);
+    } catch (err) {
+      console.error('Failed to load orders in admin:', err);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
 
   // Handle Admin Login
   const handleAdminLoginSubmit = (e: React.FormEvent) => {
@@ -408,6 +424,8 @@ const AdminPortalInner: React.FC<AdminPortalProps> = ({
     if (!Array.isArray(products)) return 0;
     return products.filter((p) => (stockEditValues[p.id] ?? p.stockCount ?? 0) < 10).length;
   }, [products, stockEditValues]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md overflow-y-auto font-mono">

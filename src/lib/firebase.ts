@@ -307,41 +307,85 @@ export const updateOrderStatusInFirestore = async (
   }
 };
 
+// Unify and sync orders helper: merges Firestore docs with any local orders, syncs any missing to Firestore, and updates localStorage
+export const mergeAndSyncOrders = async (firestoreOrders: Order[]): Promise<Order[]> => {
+  const orderMap = new Map<string, Order>();
+
+  // 1. Load local orders
+  try {
+    const localRaw = localStorage.getItem('jrrvs_master_orders');
+    if (localRaw) {
+      const localList: Order[] = JSON.parse(localRaw);
+      localList.forEach((o) => {
+        if (o && o.id && !isMockOrderId(o.id)) {
+          orderMap.set(o.id, o);
+        }
+      });
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Overlay Firestore orders (Firestore is source of truth for latest admin status)
+  firestoreOrders.forEach((o) => {
+    if (o && o.id && !isMockOrderId(o.id)) {
+      orderMap.set(o.id, o);
+    }
+  });
+
+  const merged = Array.from(orderMap.values());
+  // Sort descending by numeric ID or creation time
+  merged.sort((a, b) => {
+    const numA = Number(String(a.id).replace(/\D/g, '')) || 0;
+    const numB = Number(String(b.id).replace(/\D/g, '')) || 0;
+    return numB - numA;
+  });
+
+  // 3. Save clean unified list to localStorage so local storage is permanently in sync
+  try {
+    localStorage.setItem('jrrvs_master_orders', JSON.stringify(merged));
+  } catch {
+    // ignore
+  }
+
+  // 4. Auto-heal: If any order was in localStorage but NOT yet in Firestore, save it to Firestore now
+  if (db && firestoreOrders.length > 0) {
+    const firestoreIdSet = new Set(firestoreOrders.map((o) => o.id));
+    for (const order of merged) {
+      if (!firestoreIdSet.has(order.id)) {
+        try {
+          const clean = sanitizeForFirestore(order);
+          await setDoc(doc(db, 'all_orders', order.id), clean);
+          if (order.userId && order.userId !== 'guest') {
+            await setDoc(doc(db, 'users', order.userId, 'orders', order.id), clean);
+          }
+        } catch (err) {
+          console.warn('Could not auto-sync local order to Firestore:', err);
+        }
+      }
+    }
+  }
+
+  return merged;
+};
+
 // ADMIN: Fetch ALL orders across all students
 export const fetchAllOrdersForAdmin = async (): Promise<Order[]> => {
-  let orders: Order[] = [];
-
-  // 1. Try Firestore all_orders first
+  let firestoreList: Order[] = [];
   try {
     const allOrdersRef = collection(db, 'all_orders');
-    const q = query(allOrdersRef, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-    orders = snapshot.docs
+    const snapshot = await getDocs(allOrdersRef);
+    firestoreList = snapshot.docs
       .map((d) => d.data() as Order)
       .filter((o) => !isMockOrderId(o.id));
   } catch (err) {
-    console.warn('Could not query Firestore all_orders directly:', err);
+    console.warn('Could not query Firestore all_orders:', err);
   }
 
-  // 2. Merge with localStorage master orders ledger
-  try {
-    const localRaw = localStorage.getItem('jrrvs_master_orders');
-    const localOrders: Order[] = localRaw ? JSON.parse(localRaw) : [];
-    const validLocal = localOrders.filter((o) => !isMockOrderId(o.id));
-
-    const orderMap = new Map<string, Order>();
-    validLocal.forEach((o) => orderMap.set(o.id, o));
-    orders.forEach((o) => orderMap.set(o.id, o));
-
-    const combined = Array.from(orderMap.values());
-    combined.sort((a, b) => (b.id > a.id ? 1 : -1));
-    return combined;
-  } catch {
-    return orders;
-  }
+  return await mergeAndSyncOrders(firestoreList);
 };
 
-// Real-Time Listener for Admin to receive new orders and live updates
+// Real-Time Listener for Admin to receive new orders and live updates without fluttering
 export const subscribeToAllOrdersForAdmin = (
   onUpdate: (orders: Order[]) => void
 ): (() => void) => {
@@ -350,15 +394,24 @@ export const subscribeToAllOrdersForAdmin = (
     const allOrdersRef = collection(db, 'all_orders');
     return onSnapshot(
       allOrdersRef,
-      (snapshot) => {
+      async (snapshot) => {
         const list = snapshot.docs
           .map((d) => d.data() as Order)
           .filter((o) => !isMockOrderId(o.id));
-        list.sort((a, b) => (b.id > a.id ? 1 : -1));
-        onUpdate(list);
+        const unified = await mergeAndSyncOrders(list);
+        onUpdate(unified);
       },
       (err) => {
-        console.warn('Live all_orders listener error:', err);
+        console.warn('Live all_orders listener warning:', err);
+        // Reliable fallback to local storage
+        try {
+          const raw = localStorage.getItem('jrrvs_master_orders');
+          if (raw) {
+            onUpdate((JSON.parse(raw) as Order[]).filter((o) => !isMockOrderId(o.id)));
+          }
+        } catch {
+          // ignore
+        }
       }
     );
   } catch (err) {
